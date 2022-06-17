@@ -16,12 +16,6 @@
 #include "mysofa.h"
 #include "mysofa_export.h"
 
-struct DATAFILE {
-  const char* buf;
-  long pos;
-  long len;
-};
-
 /* checks file address.
  * NULL is an invalid address indicating a invalid field
  */
@@ -29,16 +23,88 @@ int validAddress(struct READER *reader, uint64_t address) {
   return address > 0 && address < reader->superblock.end_of_file_address;
 }
 
+int readfn(void *cookie, char *buf, int n, bool file) {
+  if (file) {
+    FILE *f = (FILE*)cookie;
+    return fread(buf, 1, n, f);
+  } else {
+    struct DATAFILE *obj = (struct DATAFILE*)cookie;
+
+    if ( obj->pos + n > obj->len ) {
+      n = obj->len - obj->pos;
+    }
+
+    memcpy( buf, obj->buf + obj->pos, n );
+    obj->pos += n;
+
+    return n;
+  }
+  return -1;
+}
+
+fpos_t seekfn(void *cookie, fpos_t offset, int wense, bool file) {
+  if (file) {
+    FILE *f = (FILE*)cookie;
+    return fseek(f, offset, wense);
+  } else {
+    struct DATAFILE* obj = (struct DATAFILE*)cookie;
+    switch ( wense ) {
+    case SEEK_SET:
+      obj->pos = offset;
+      break;
+    case SEEK_CUR:
+      obj->pos += offset;
+      break;
+    case SEEK_END:
+      obj->pos = obj->len + offset;
+      break;
+    default:
+      errno = EINVAL;
+      return -1;
+    }
+  
+    return obj->pos;
+  }
+}
+
+fpos_t tellfn(void* cookie, bool file) {
+  if (file) {
+    FILE *f = (FILE*)cookie;
+    return ftell(f);
+  } else {
+    struct DATAFILE *obj = (struct DATAFILE*)cookie;
+    return obj->pos;
+  }
+}
+
+int getcfn(void* cookie, bool file) {
+  if (file) {
+    FILE *f = (FILE*)cookie;
+    return fgetc(f);
+  } else {
+    struct DATAFILE *obj = (struct DATAFILE*)cookie;
+    if (obj->pos == obj->len) {
+      return -1;
+    } else {
+      unsigned char ch;
+      memcpy(&ch, obj->buf + obj->pos, 1);
+      obj->pos++;
+      return (int)ch;
+    }
+  }
+  return -1;
+}
+
 /* little endian */
 uint64_t readValue(struct READER *reader, int size) {
   int i, c;
   uint64_t value;
-  c = fgetc(reader->fhd);
+  c = getcfn(reader->fhd, reader->file);
   if (c < 0)
     return 0xffffffffffffffffLL;
   value = (uint8_t)c;
   for (i = 1; i < size; i++) {
-    c = fgetc(reader->fhd);
+    c = getcfn(reader->fhd, reader->file);
     if (c < 0)
       return 0xffffffffffffffffLL;
     value |= ((uint64_t)c) << (i * 8);
@@ -287,41 +353,6 @@ error:
   return NULL;
 }
 
-static int readfn(void *cookie, char *buf, int n)
-{
-  struct DATAFILE* obj = (struct DATAFILE*)cookie;
-
-  if ( obj->pos + n > obj->len ) {
-    n = obj->len - obj->pos;
-  }
-
-  memcpy( buf, obj->buf + obj->pos, n );
-  obj->pos += n;
-
-  return n;
-}
-
-static fpos_t seekfn(void *cookie, fpos_t offset, int wense)
-{
-   struct DATAFILE* obj = (struct DATAFILE*)cookie;
-   switch ( wense ) {
-   case SEEK_SET:
-     obj->pos = offset;
-     break;
-   case SEEK_CUR:
-     obj->pos += offset;
-     break;
-   case SEEK_END:
-     obj->pos = obj->len + offset;
-     break;
-   default:
-     errno = EINVAL;
-     return -1;
-   }
-  
-  return obj->pos;
-}
-
 MYSOFA_EXPORT struct MYSOFA_HRTF *mysofa_load_data(const char *data, const int size, int *err) {
   struct READER reader;
   struct MYSOFA_HRTF *hrtf = NULL;
@@ -331,7 +362,8 @@ MYSOFA_EXPORT struct MYSOFA_HRTF *mysofa_load_data(const char *data, const int s
   obj.pos = 0L;
   obj.len = (long)size;
 
-  reader.fhd = funopen( (void*)(&obj), readfn, NULL, seekfn, NULL  );
+  reader.fhd = (void*)&obj;
+  reader.file = false;
   reader.gcol = NULL;
   reader.all = NULL;
   reader.recursive_counter = 0;
@@ -367,6 +399,7 @@ MYSOFA_EXPORT struct MYSOFA_HRTF *mysofa_load(const char *filename, int *err) {
     *err = errno;
     return NULL;
   }
+  reader.file = true;
   reader.gcol = NULL;
   reader.all = NULL;
   reader.recursive_counter = 0;

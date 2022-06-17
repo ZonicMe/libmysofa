@@ -17,6 +17,12 @@ struct READER;
 struct DIR;
 struct DATAOBJECT;
 
+struct DATAFILE {
+  const char* buf;
+  long pos;
+  long len;
+};
+
 union RECORD {
   struct TYPE5 {
     uint32_t hash_of_name;
@@ -170,7 +176,9 @@ void gcolFree(struct GCOL *gcol);
 int treeRead(struct READER *reader, struct DATAOBJECT *data);
 
 struct READER {
-  FILE *fhd;
+  void *fhd;
+
+  bool file;
 
   struct DATAOBJECT *all;
 
@@ -187,5 +195,10 @@ uint64_t readValue(struct READER *reader, int size);
 int gunzip(int inlen, char *in, int *outlen, char *out);
 
 char *mysofa_strdup(const char *s);
+
+int readfn(void *cookie, char *buf, int n, bool file);
+fpos_t seekfn(void *cookie, fpos_t offset, int wense, bool file);
+fpos_t tellfn(void* cookie, bool file);
+int getcfn(void *cookie, bool file);
 
 #endif /* READER_H_ */

@@ -377,8 +377,6 @@ MYSOFA_EXPORT struct MYSOFA_HRTF *mysofa_load_data(const char *data, const int s
   superblockFree(&reader, &reader.superblock);
   gcolFree(reader.gcol);
 
-  fclose(reader.fhd);
-
   return hrtf;
 }
 

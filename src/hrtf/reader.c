@@ -63,8 +63,9 @@ fpos_t seekfn(void *cookie, fpos_t offset, int wense, bool file) {
       return -1;
     }
   
-    return obj->pos;
+    return 0;
   }
+  return -1;
 }
 
 fpos_t tellfn(void* cookie, bool file) {
@@ -75,6 +76,7 @@ fpos_t tellfn(void* cookie, bool file) {
     struct DATAFILE *obj = (struct DATAFILE*)cookie;
     return obj->pos;
   }
+  return -1;
 }
 
 int getcfn(void* cookie, bool file) {
